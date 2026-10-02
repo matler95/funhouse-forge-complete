@@ -6,6 +6,7 @@ import { Archive, FileText, Image as ImageIcon, Search, Star, Trash2, Download, 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchMyOrgs } from "@/lib/queries";
+import { can } from "@/lib/roles";
 import { getFileUrl, deleteItem } from "@/lib/files.functions";
 import { fmtSize, fmtTime } from "@/lib/upload";
 import { Input } from "@/components/ui/input";
@@ -131,16 +132,38 @@ function InboxPage() {
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{view === "new" ? "Inbox" : "Archiwum"}</h1>
+        <h1 className="text-2xl font-semibold">
+          {view === "archive" ? "Archiwum" : box === "me" ? "Moje pliki" : "Skrzynka gabinetu"}
+        </h1>
         <Button variant="ghost" size="sm" onClick={() => setView(view === "new" ? "archive" : "new")}>
-          {view === "new" ? <><Archive /> Archiwum</> : <><InboxIcon /> Inbox</>}
+          {view === "new" ? <><Archive /> Archiwum</> : <><InboxIcon /> Wróć</>}
         </Button>
       </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {box === "me"
+          ? "Pliki wysłane do Ciebie przez Twoje linki."
+          : "Pliki bez konkretnego lekarza — obsługuje je recepcja i administrator."}
+      </p>
+
+      {hasPersonal && hasClinic && (
+        <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+          {(["me", "clinic"] as const).map((b) => (
+            <button
+              key={b}
+              onClick={() => { setBox(b); setOrg("all"); }}
+              className={`flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-medium ${box === b ? "bg-card shadow-soft" : "text-muted-foreground"}`}
+            >
+              {b === "me" ? "Dla mnie" : "Skrzynka gabinetu"}
+              {unread(undefined, b) > 0 && <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{unread(undefined, b)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
         <Chip active={org === "all"} onClick={() => setOrg("all")} label="Wszystkie" count={unread()} />
-        {orgs.data?.map((o) => (
-          <Chip key={o.id} active={org === o.id} onClick={() => setOrg(o.id)} label={o.name} count={unread(o.id)} />
+        {chipOrgs.map((o) => (
+          <Chip key={o.id} active={org === o.id} onClick={() => setOrg(o.id)} label={o.kind === "personal" ? "Moja praktyka" : o.name} count={unread(o.id)} />
         ))}
       </div>
 
@@ -156,7 +179,9 @@ function InboxPage() {
             <InboxIcon className="mx-auto h-10 w-10 text-muted-foreground" />
             <p className="mt-3 font-medium">{view === "new" ? "Brak nowych plików" : "Archiwum jest puste"}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Przejdź do „Gabinety”, utwórz link do wysyłania i przekaż go recepcji.
+              {box === "me"
+                ? "W „Gabinety” utwórz swój link do wysyłania i przekaż go pacjentowi, laboratorium lub recepcji."
+                : "Tu trafią pliki wysłane do gabinetu przez lekarzy i linki gabinetu."}
             </p>
           </li>
         )}
@@ -223,9 +248,11 @@ function InboxPage() {
                     <Download /> Pobierz
                   </a>
                 </Button>
-                <Button variant="outline" onClick={() => remove(open.item.id)}>
-                  <Trash2 /> Usuń
-                </Button>
+                {canDelete(open.item) && (
+                  <Button variant="outline" onClick={() => remove(open.item.id)}>
+                    <Trash2 /> Usuń
+                  </Button>
+                )}
               </div>
             </>
           )}
