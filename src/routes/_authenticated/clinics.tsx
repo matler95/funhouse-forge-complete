@@ -265,19 +265,43 @@ function OrgPanel({ org }: { org: Org }) {
           </p>
         </div>
       )}
-      <Tabs defaultValue="links" className="mt-4">
+      {!personal && <RoleCard role={org.role} />}
+      {org.role === "staff" && !personal && (
+        <Button asChild variant="secondary" className="mt-4 w-full sm:w-auto">
+          <Link to="/inbox"><InboxIcon /> Otwórz skrzynkę gabinetu</Link>
+        </Button>
+      )}
+      <Tabs defaultValue={isAdmin && !personal ? "members" : can.ownLinks(org.role) ? "links" : "send"} className="mt-4">
         <TabsList>
-          <TabsTrigger value="links">Linki</TabsTrigger>
-          {!personal && <TabsTrigger value="send">Wyślij</TabsTrigger>}
-          {isAdmin && !personal && <TabsTrigger value="members">Członkowie</TabsTrigger>}
-          {isAdmin && <TabsTrigger value="audit">Audyt</TabsTrigger>}
+          {isAdmin && !personal && <TabsTrigger value="members">Zespół</TabsTrigger>}
+          {can.ownLinks(org.role) && <TabsTrigger value="links">{isAdmin && !personal ? "Linki" : "Moje linki"}</TabsTrigger>}
+          {!personal && <TabsTrigger value="send">Wyślij do skrzynki</TabsTrigger>}
+          {can.audit(org.role) && <TabsTrigger value="audit">Audyt</TabsTrigger>}
         </TabsList>
-        <TabsContent value="links"><LinksTab org={org} /></TabsContent>
+        {can.ownLinks(org.role) && <TabsContent value="links"><LinksTab org={org} /></TabsContent>}
         {!personal && <TabsContent value="send"><SendTab org={org} /></TabsContent>}
         {isAdmin && !personal && <TabsContent value="members"><MembersTab org={org} /></TabsContent>}
-        {isAdmin && <TabsContent value="audit"><AuditTab org={org} /></TabsContent>}
+        {can.audit(org.role) && <TabsContent value="audit"><AuditTab org={org} /></TabsContent>}
       </Tabs>
     </div>
+  );
+}
+
+function RoleCard({ role }: { role: string }) {
+  const caps = capabilities(role);
+  return (
+    <details className="mt-4 rounded-xl border bg-muted/40 p-4 text-sm">
+      <summary className="cursor-pointer font-medium">Co możesz jako {roleLabel[role]}?</summary>
+      <ul className="mt-3 grid gap-1.5 sm:grid-cols-2">
+        {caps.map((c) => (
+          <li key={c.label} className={`flex items-center gap-2 ${c.allowed ? "" : "text-muted-foreground"}`}>
+            {c.allowed ? <Check className="h-4 w-4 text-primary" /> : <Minus className="h-4 w-4" />}
+            {c.label}
+          </li>
+        ))}
+      </ul>
+      {role !== "admin" && <p className="mt-3 text-xs text-muted-foreground">Potrzebujesz więcej? Poproś administratora gabinetu o zmianę roli.</p>}
+    </details>
   );
 }
 
