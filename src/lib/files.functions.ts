@@ -75,7 +75,7 @@ export const createDropLink = createServerFn({ method: "POST" })
         ? new Date(Date.now() + data.expiresInDays * 86400000).toISOString()
         : null,
     });
-    if (error) throw new Error("Nie masz uprawnień do tworzenia tego linku.");
+    if (error) throw new Error("Twoja rola nie pozwala tworzyć tego linku. Linki tworzą lekarze (dla siebie) i administrator.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin.from("audit_log").insert({
       org_id: data.orgId,

@@ -22,6 +22,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Check, Minus, Inbox as InboxIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { roleLabel, roleTagline, capabilities, can } from "@/lib/roles";
 
 export const Route = createFileRoute("/_authenticated/clinics")({
   head: () => ({
@@ -37,12 +40,7 @@ export const Route = createFileRoute("/_authenticated/clinics")({
   component: ClinicsPage,
 });
 
-const roleLabel: Record<string, string> = { admin: "Administrator", doctor: "Lekarz", staff: "Recepcja" };
-const roleHint: Record<string, string> = {
-  admin: "Zarządza członkami, linkami gabinetu i audytem.",
-  doctor: "Dostaje pliki „dla siebie” i tworzy własne linki.",
-  staff: "Widzi skrzynkę gabinetu (pliki bez konkretnego lekarza).",
-};
+const roleHint = roleTagline;
 
 function ClinicsPage() {
   const orgs = useQuery({ queryKey: ["orgs"], queryFn: fetchMyOrgs });
