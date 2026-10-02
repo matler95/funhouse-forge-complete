@@ -75,18 +75,30 @@ function InboxPage() {
   }, [qc]);
 
   const orgName = (id: string) => orgs.data?.find((o) => o.id === id)?.name ?? "";
+  const roleIn = (id: string) => orgs.data?.find((o) => o.id === id)?.role ?? "";
+  const hasPersonal = (orgs.data ?? []).some((o) => can.personalInbox(o.role));
+  const hasClinic = (orgs.data ?? []).some((o) => o.kind !== "personal" && can.clinicInbox(o.role));
+  const [boxPref, setBox] = useState<"me" | "clinic">("me");
+  const box: "me" | "clinic" = !hasPersonal && hasClinic ? "clinic" : !hasClinic ? "me" : boxPref;
+  const inBox = (i: Item) => (box === "me" ? !!i.recipient_user_id : !i.recipient_user_id);
+  const canDelete = (i: Item) => !!i.recipient_user_id || can.deleteClinicFiles(roleIn(i.org_id));
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     return (items.data ?? []).filter(
       (i) =>
+        inBox(i) &&
         (view === "new" ? !i.archived_at : !!i.archived_at) &&
         (org === "all" || i.org_id === org) &&
         (!s || [i.file_name, i.note, i.sender_name].some((v) => v?.toLowerCase().includes(s))),
     );
-  }, [items.data, q, org, view]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.data, q, org, view, box]);
 
-  const unread = (id?: string) =>
-    (items.data ?? []).filter((i) => !i.read_at && !i.archived_at && (!id || i.org_id === id)).length;
+  const unread = (id?: string, b: "me" | "clinic" = box) =>
+    (items.data ?? []).filter(
+      (i) => !i.read_at && !i.archived_at && (b === "me" ? !!i.recipient_user_id : !i.recipient_user_id) && (!id || i.org_id === id),
+    ).length;
+  const chipOrgs = (orgs.data ?? []).filter((o) => (box === "me" ? can.personalInbox(o.role) : o.kind !== "personal" && can.clinicInbox(o.role)));
 
   async function update(id: string, patch: Partial<Item>) {
     qc.setQueryData<Item[]>(["items"], (old) => old?.map((i) => (i.id === id ? { ...i, ...patch } : i)));
