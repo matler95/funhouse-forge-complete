@@ -6,6 +6,7 @@ import { Archive, FileText, Image as ImageIcon, Search, Star, Trash2, Download, 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchMyOrgs } from "@/lib/queries";
+import { can } from "@/lib/roles";
 import { getFileUrl, deleteItem } from "@/lib/files.functions";
 import { fmtSize, fmtTime } from "@/lib/upload";
 import { Input } from "@/components/ui/input";
@@ -75,18 +76,30 @@ function InboxPage() {
   }, [qc]);
 
   const orgName = (id: string) => orgs.data?.find((o) => o.id === id)?.name ?? "";
+  const roleIn = (id: string) => orgs.data?.find((o) => o.id === id)?.role ?? "";
+  const hasPersonal = (orgs.data ?? []).some((o) => can.personalInbox(o.role));
+  const hasClinic = (orgs.data ?? []).some((o) => o.kind !== "personal" && can.clinicInbox(o.role));
+  const [boxPref, setBox] = useState<"me" | "clinic">("me");
+  const box: "me" | "clinic" = !hasPersonal && hasClinic ? "clinic" : !hasClinic ? "me" : boxPref;
+  const inBox = (i: Item) => (box === "me" ? !!i.recipient_user_id : !i.recipient_user_id);
+  const canDelete = (i: Item) => !!i.recipient_user_id || can.deleteClinicFiles(roleIn(i.org_id));
   const list = useMemo(() => {
     const s = q.trim().toLowerCase();
     return (items.data ?? []).filter(
       (i) =>
+        inBox(i) &&
         (view === "new" ? !i.archived_at : !!i.archived_at) &&
         (org === "all" || i.org_id === org) &&
         (!s || [i.file_name, i.note, i.sender_name].some((v) => v?.toLowerCase().includes(s))),
     );
-  }, [items.data, q, org, view]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.data, q, org, view, box]);
 
-  const unread = (id?: string) =>
-    (items.data ?? []).filter((i) => !i.read_at && !i.archived_at && (!id || i.org_id === id)).length;
+  const unread = (id?: string, b: "me" | "clinic" = box) =>
+    (items.data ?? []).filter(
+      (i) => !i.read_at && !i.archived_at && (b === "me" ? !!i.recipient_user_id : !i.recipient_user_id) && (!id || i.org_id === id),
+    ).length;
+  const chipOrgs = (orgs.data ?? []).filter((o) => (box === "me" ? can.personalInbox(o.role) : o.kind !== "personal" && can.clinicInbox(o.role)));
 
   async function update(id: string, patch: Partial<Item>) {
     qc.setQueryData<Item[]>(["items"], (old) => old?.map((i) => (i.id === id ? { ...i, ...patch } : i)));
@@ -119,16 +132,38 @@ function InboxPage() {
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{view === "new" ? "Inbox" : "Archiwum"}</h1>
+        <h1 className="text-2xl font-semibold">
+          {view === "archive" ? "Archiwum" : box === "me" ? "Moje pliki" : "Skrzynka gabinetu"}
+        </h1>
         <Button variant="ghost" size="sm" onClick={() => setView(view === "new" ? "archive" : "new")}>
-          {view === "new" ? <><Archive /> Archiwum</> : <><InboxIcon /> Inbox</>}
+          {view === "new" ? <><Archive /> Archiwum</> : <><InboxIcon /> Wróć</>}
         </Button>
       </div>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {box === "me"
+          ? "Pliki wysłane do Ciebie przez Twoje linki."
+          : "Pliki bez konkretnego lekarza — obsługuje je recepcja i administrator."}
+      </p>
+
+      {hasPersonal && hasClinic && (
+        <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+          {(["me", "clinic"] as const).map((b) => (
+            <button
+              key={b}
+              onClick={() => { setBox(b); setOrg("all"); }}
+              className={`flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-medium ${box === b ? "bg-card shadow-soft" : "text-muted-foreground"}`}
+            >
+              {b === "me" ? "Dla mnie" : "Skrzynka gabinetu"}
+              {unread(undefined, b) > 0 && <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{unread(undefined, b)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1">
         <Chip active={org === "all"} onClick={() => setOrg("all")} label="Wszystkie" count={unread()} />
-        {orgs.data?.map((o) => (
-          <Chip key={o.id} active={org === o.id} onClick={() => setOrg(o.id)} label={o.name} count={unread(o.id)} />
+        {chipOrgs.map((o) => (
+          <Chip key={o.id} active={org === o.id} onClick={() => setOrg(o.id)} label={o.kind === "personal" ? "Moja praktyka" : o.name} count={unread(o.id)} />
         ))}
       </div>
 
@@ -144,7 +179,9 @@ function InboxPage() {
             <InboxIcon className="mx-auto h-10 w-10 text-muted-foreground" />
             <p className="mt-3 font-medium">{view === "new" ? "Brak nowych plików" : "Archiwum jest puste"}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Przejdź do „Gabinety”, utwórz link do wysyłania i przekaż go recepcji.
+              {box === "me"
+                ? "W „Gabinety” utwórz swój link do wysyłania i przekaż go pacjentowi, laboratorium lub recepcji."
+                : "Tu trafią pliki wysłane do gabinetu przez lekarzy i linki gabinetu."}
             </p>
           </li>
         )}
@@ -211,9 +248,11 @@ function InboxPage() {
                     <Download /> Pobierz
                   </a>
                 </Button>
-                <Button variant="outline" onClick={() => remove(open.item.id)}>
-                  <Trash2 /> Usuń
-                </Button>
+                {canDelete(open.item) && (
+                  <Button variant="outline" onClick={() => remove(open.item.id)}>
+                    <Trash2 /> Usuń
+                  </Button>
+                )}
               </div>
             </>
           )}
